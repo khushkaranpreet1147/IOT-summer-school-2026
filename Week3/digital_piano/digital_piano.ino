@@ -1,3 +1,7 @@
+const int btnToggle = 6;
+bool isMajor = true;
+bool lastTogglestate = HIGH;
+
 const int btnDo = 2;
 const int btnRe = 3;
 const int btnMi = 4;
@@ -10,11 +14,18 @@ void setup() {
   pinMode(btnMi, INPUT_PULLUP);
   pinMode(btnFa, INPUT_PULLUP);
   pinMode(buzzerPin, OUTPUT);
+    pinMode(btnToggle,INPUT_PULLUP);
+
 }
+
 
 void loop() {
   
- void loop() {
+  if (digitalRead(btnToggle) == LOW) {
+    isMajor = !isMajor;
+    delay(300); 
+  }
+  int offset = isMajor ? 0 : -20;
   int pressedCount = 0;
   if (digitalRead(btnDo) == LOW) pressedCount++;
   if (digitalRead(btnRe) == LOW) pressedCount++;
@@ -35,5 +46,3 @@ void loop() {
     noTone(buzzerPin);
   }
 }
-  
-  
