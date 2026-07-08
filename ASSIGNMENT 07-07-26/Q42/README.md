@@ -1,4 +1,7 @@
-​📌 Project Overview
+​Problem Statement
+A J&K horticulture farmer wants to automate irrigation for a small saffron farm plot. The system should read soil moisture every 30 minutes and activate a water pump only when the soil is dry. Saffron is sensitive to overwatering — the system must also prevent watering if it rained recently (use LDR to detect low light/overcast sky as a rain proxy and also leverage the use of api also). The farmer must be able to manually override via a button.
+
+📌 Project Overview
 ​This project automates the watering process for small saffron plots. By integrating soil moisture monitoring, light-level analysis (to detect rain/overcast conditions), and cloud logging, the system ensures optimal hydration while preventing crop damage from excessive water.
 
 
