@@ -1,222 +1,205 @@
 #include <WiFi.h>
+#include <PubSubClient.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+
+// ================= WIFI =================
+const char* ssid = "Wokwi-GUEST";
+const char* password = "";
+
+// ================= MQTT =================
+const char* mqtt_server = "broker.hivemq.com";
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 // ================= PINS =================
-#define PIR_PIN 27
-#define BUZZER_PIN 25
+#define DHTPIN 4
+#define DHTTYPE DHT22
+#define LDR_PIN 34
 
-#define LED_GREEN 18
-#define LED_YELLOW 19
-#define LED_RED 21
+#define HEATER_PIN 25
+#define FAN_PIN 26
+#define LIGHT_PIN 27
 
-// Potentiometer for sensitivity
-#define POT_PIN 34
+// ================= OBJECTS =================
+DHT dht(DHTPIN, DHTTYPE);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-// ================= TIME WINDOW =================
-int startHour = 0;
-int endHour = 24;
-bool windowSet = false;
+// ================= TARGET =================
+float tempMin = 18, tempMax = 22;
+float humMin = 60, humMax = 70;
 
-// Simulated current hour
-int currentHour = 12;
+float tempHyst = 1;
+float humHyst = 5;
 
-// ================= VARIABLES =================
-unsigned long lastTrigger = 0;
+// ================= LDR =================
+int samples[10];
+int idx = 0;
 
-int alertLevel = 1;
+// ================= LCD =================
+int mode = 0;
+unsigned long lastLCD = 0;
 
-// ================= BUZZER =================
-void beep(int freq, int duration)
-{
-  ledcWriteTone(BUZZER_PIN, freq);
-  delay(duration);
-  ledcWriteTone(BUZZER_PIN, 0);
+// ================= TIMING =================
+unsigned long lastPublish = 0;
+
+// ================= WIFI =================
+void setup_wifi() {
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(300);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected");
 }
 
-// ================= READ SERIAL COMMAND =================
-void readCommand()
-{
-  if (Serial.available())
-  {
-    String cmd = Serial.readStringUntil('\n');
-
-    if (cmd.startsWith("SET_HOURS"))
-    {
-      sscanf(cmd.c_str(),
-             "SET_HOURS %d %d",
-             &startHour,
-             &endHour);
-
-      windowSet = true;
-
-      Serial.print("Monitoring Hours: ");
-      Serial.print(startHour);
-      Serial.print(" -> ");
-      Serial.println(endHour);
+// ================= MQTT =================
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Connecting MQTT...");
+    if (client.connect("ESP32Greenhouse")) {
+      Serial.println("Connected");
+    } else {
+      Serial.print("Failed rc=");
+      Serial.print(client.state());
+      delay(1000);
     }
   }
 }
 
-// ================= ACTIVE TIME =================
-bool isActiveTime()
-{
-  if (!windowSet)
-    return true;
+// ================= LDR AVG =================
+int getLDR() {
+  samples[idx] = analogRead(LDR_PIN);
+  idx = (idx + 1) % 10;
 
-  if (startHour < endHour)
-  {
-    return (currentHour >= startHour &&
-            currentHour < endHour);
-  }
+  long sum = 0;
+  for (int i = 0; i < 10; i++) sum += samples[i];
 
-  return (currentHour >= startHour ||
-          currentHour < endHour);
+  return sum / 10;
 }
 
-// ================= ALERT =================
-void alertSystem(int level)
-{
-  Serial.print("[");
-  Serial.print(millis() / 1000);
-  Serial.print(" sec] ");
+// ================= CONTROL =================
+void control(float t, float h, int l) {
 
-  if (level == 1)
-  {
-    Serial.println("WARNING");
-
-    digitalWrite(LED_GREEN, HIGH);
-
-    beep(1000, 200);
-
-    digitalWrite(LED_GREEN, LOW);
+  if (t < tempMin - tempHyst) {
+    digitalWrite(HEATER_PIN, HIGH);
+    digitalWrite(FAN_PIN, LOW);
   }
-  else if (level == 2)
-  {
-    Serial.println("ALARM");
-
-    digitalWrite(LED_GREEN, HIGH);
-    digitalWrite(LED_YELLOW, HIGH);
-
-    beep(1600, 350);
-
-    digitalWrite(LED_GREEN, LOW);
-    digitalWrite(LED_YELLOW, LOW);
+  else if (t > tempMax + tempHyst) {
+    digitalWrite(FAN_PIN, HIGH);
+    digitalWrite(HEATER_PIN, LOW);
   }
+
+  if (h > humMax + humHyst) {
+    digitalWrite(FAN_PIN, HIGH);
+  }
+
+  if (l < 1500)
+    digitalWrite(LIGHT_PIN, HIGH);
   else
-  {
-    Serial.println("URGENT");
+    digitalWrite(LIGHT_PIN, LOW);
+}
 
-    for (int i = 0; i < 4; i++)
-    {
-      digitalWrite(LED_GREEN, HIGH);
-      digitalWrite(LED_YELLOW, HIGH);
-      digitalWrite(LED_RED, HIGH);
+// ================= MQTT + SERIAL =================
+void sendData(float t, float h, int l) {
 
-      beep(2500, 150);
+  // ---- SERIAL OUTPUT ----
+  Serial.println("------ GREENHOUSE DATA ------");
+  Serial.print("Temperature: "); Serial.print(t); Serial.println(" °C");
+  Serial.print("Humidity: "); Serial.print(h); Serial.println(" %");
+  Serial.print("Light Avg: "); Serial.println(l);
 
-      digitalWrite(LED_GREEN, LOW);
-      digitalWrite(LED_YELLOW, LOW);
-      digitalWrite(LED_RED, LOW);
+  Serial.print("Heater: "); Serial.println(digitalRead(HEATER_PIN));
+  Serial.print("Fan: "); Serial.println(digitalRead(FAN_PIN));
+  Serial.print("Light: "); Serial.println(digitalRead(LIGHT_PIN));
+  Serial.println("-----------------------------\n");
 
-      delay(100);
-    }
+  // ---- MQTT OUTPUT ----
+  client.publish("greenhouse/temp", String(t).c_str());
+  client.publish("greenhouse/humidity", String(h).c_str());
+  client.publish("greenhouse/light", String(l).c_str());
+  client.publish("greenhouse/heater", String(digitalRead(HEATER_PIN)).c_str());
+  client.publish("greenhouse/fan", String(digitalRead(FAN_PIN)).c_str());
+  client.publish("greenhouse/lightStatus", String(digitalRead(LIGHT_PIN)).c_str());
+}
+
+// ================= LCD =================
+void display(float t, float h, int l) {
+
+  if (millis() - lastLCD > 3000) {
+    mode = (mode + 1) % 3;
+    lastLCD = millis();
+    lcd.clear();
+  }
+
+  if (mode == 0) {
+    lcd.setCursor(0,0);
+    lcd.print("Temp:");
+    lcd.print(t);
+    lcd.setCursor(0,1);
+    lcd.print("Hum:");
+    lcd.print(h);
+  }
+  else if (mode == 1) {
+    lcd.setCursor(0,0);
+    lcd.print("Light:");
+    lcd.setCursor(0,1);
+    lcd.print(l);
+  }
+  else {
+    lcd.setCursor(0,0);
+    lcd.print("H:");
+    lcd.print(digitalRead(HEATER_PIN));
+    lcd.print(" F:");
+    lcd.print(digitalRead(FAN_PIN));
+    lcd.setCursor(0,1);
+    lcd.print("L:");
+    lcd.print(digitalRead(LIGHT_PIN));
   }
 }
 
 // ================= SETUP =================
+void setup() {
 
-void setup()
-{
   Serial.begin(115200);
 
-  pinMode(PIR_PIN, INPUT);
+  pinMode(HEATER_PIN, OUTPUT);
+  pinMode(FAN_PIN, OUTPUT);
+  pinMode(LIGHT_PIN, OUTPUT);
 
-  pinMode(POT_PIN, INPUT);
+  dht.begin();
+  lcd.init();
+  lcd.backlight();
 
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_YELLOW, OUTPUT);
-  pinMode(LED_RED, OUTPUT);
+  setup_wifi();
+  client.setServer(mqtt_server, 1883);
 
-  // Attach buzzer PWM
-  ledcAttach(BUZZER_PIN, 2000, 8);
-
-  Serial.println("==================================");
-  Serial.println(" PIR Security Camera Trigger");
-  Serial.println("==================================");
-  Serial.println("Command Example:");
-  Serial.println("SET_HOURS 22 06");
-  Serial.println();
+  for (int i = 0; i < 10; i++) samples[i] = 0;
 }
 
 // ================= LOOP =================
+void loop() {
 
-void loop()
-{
-  // Read serial command
-  readCommand();
+  if (!client.connected()) reconnect();
+  client.loop();
 
-  // ------------------------------
-  // Read potentiometer
-  // ------------------------------
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
 
-  int potValue = analogRead(POT_PIN);
+  if (isnan(temp) || isnan(hum)) return;
 
-  if (potValue < 1365)
-    alertLevel = 1;
+  int light = getLDR();
 
-  else if (potValue < 2730)
-    alertLevel = 2;
+  control(temp, hum, light);
+  display(temp, hum, light);
 
-  else
-    alertLevel = 3;
-
-  // ------------------------------
-  // Read PIR
-  // ------------------------------
-
-  int pirState = digitalRead(PIR_PIN);
-
-  if (pirState == HIGH && isActiveTime())
-  {
-    if (millis() - lastTrigger > 3000)
-    {
-      lastTrigger = millis();
-
-      Serial.println("--------------------------------");
-
-      Serial.print("Timestamp : ");
-      Serial.print(millis() / 1000);
-      Serial.println(" sec");
-
-      Serial.println("Motion Detected");
-
-      Serial.print("Sensitivity Value : ");
-      Serial.println(potValue);
-
-      Serial.print("Alert Level : ");
-
-      switch (alertLevel)
-      {
-        case 1:
-          Serial.println("WARNING");
-          break;
-
-        case 2:
-          Serial.println("ALARM");
-          break;
-
-        case 3:
-          Serial.println("URGENT");
-          break;
-      }
-
-      alertSystem(alertLevel);
-
-      Serial.println("Motion Event Logged");
-
-      Serial.println("--------------------------------");
-    }
+  // SEND EVERY 3 SECONDS (NO SPAM)
+  if (millis() - lastPublish > 3000) {
+    lastPublish = millis();
+    sendData(temp, hum, light);
   }
 
-  // Small delay to reduce CPU usage
-  delay(100);
+  delay(200);
 }
