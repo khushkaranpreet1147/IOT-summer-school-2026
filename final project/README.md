@@ -9,6 +9,11 @@
 
 
 
+
+
+
+
+
 ⚡ The Challenge
 ​Unstable Environments: Fluctuations in temperature and humidity cause food to spoil rapidly.
 ​Human Error: Manual monitoring is prone to missed checks and human oversight.
@@ -18,9 +23,28 @@
 
 
 
+
+
+
+
+
+
+
+
+
 💡 Our Solution
 ​FreshGuard IoT acts as a proactive digital guard for food storage environments. It features high-precision multi-parameter sensing, built-in durability for harsh cold storage conditions, and seamless integration into existing warehouse and storage infrastructures.
 ​
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -36,12 +60,29 @@
 
 
 
+
+
+
+
+
+
+
+
 HARDWARE COMPONENTS->
 ​Core Controller & Connectivity: ESP32 microcontroller featuring built-in Wi-Fi for local processing and cloud data synchronization.
 ​
 Environmental Sensing Suite: DHT22 for temperature and humidity, MQ-2 for gas sensing, LDR for light detection, and a resistor for multi-parameter environmental tracking.
 ​
 User Feedback & Infrastructure: OLED display for local visual readouts and a buzzer for audio emergency warnings
+
+
+
+
+
+
+
+
+
 
 
 
@@ -65,12 +106,28 @@ User Feedback & Infrastructure: OLED display for local visual readouts and a buz
 
 
 
+
+
+
+
+
+
+
+
 💻 Digital Dashboard
 ​Centralized Monitoring: Real-time visibility into all warehouse zones from a single screen.
 ​Intelligent Status Logic: Visual indicator suite reflecting the exact health status of the environment.
 ​Data Analytics: Integrated graphs tracking historical shifts in temperature and humidity.
 ​Instant Alerts: Automated push notification pipelines for rapid response workflows.
 ​
+
+
+
+
+
+
+
+
 
 
 
@@ -86,7 +143,18 @@ User Feedback & Infrastructure: OLED display for local visual readouts and a buz
 ​
 
 👥 The Team
-khushkaranpreet kaur​
+
+
+khushkaranpreet kaur
+
+
+​
 ​Sayan
+
+
+
 ​Ridhika Bansal
+
+
+
 ​Tanish
